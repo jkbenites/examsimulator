@@ -26,7 +26,9 @@ services:
     # Debes acceder a la app en http://localhost:8080
     ports:
       - "8080:5173"
-
+    
+    restart: unless-stopped
+    
     # Comando para ejecutar la aplicación:
     # 1. Ejecuta 'npm install' para instalar dependencias.
     # 2. Ejecuta 'npm run dev' con las flags necesarias:
