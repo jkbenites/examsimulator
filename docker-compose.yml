@@ -4,28 +4,25 @@ working_dir: /app
 # Monta el directorio actual (donde está el docker-compose.yml) 
 # en /app dentro del contenedor.
 # El segundo volumen excluye el directorio node_modules local 
-# para usar el del contenedor y evitar conflictos.
+# para usar el del contenedor y evitar conflictos de OS.
 volumes:
   - .:/app
   - /app/node_modules
 
-# Aqui se guarda el API de GEMINI
+# Aquí se carga el archivo de secretos .env.secrets (que debe estar en .gitignore)
 env_file:
   - .env.secrets
-  # Contenido de .env.secrets:
-  # GEMINI_API_KEY=XXXXXXX
+  # Nota: El archivo .env.secrets debe contener: GEMINI_API_KEY=XXXXXXX
 
 # Mapeo de puertos: 
-# - 8080 (Máquina Host) -> 5173 (Contenedor)
+# - 8080 (Máquina Host) -> 5173 (Contenedor, puerto de Vite)
 # Debes acceder a la app en http://localhost:8080
 ports:
   - "8080:5173"
 
 # Comando para ejecutar la aplicación:
-# 1. Ejecuta 'npm install' para instalar dependencias.
-# 2. Ejecuta 'npm run dev' con las flags necesarias:
-#    - '--host 0.0.0.0' para ser accesible desde fuera del contenedor.
-#    - '--port 5173' para especificar el puerto interno.
+# Instala dependencias y luego ejecuta 'npm run dev' con el host 0.0.0.0 
+# para que sea accesible desde fuera del contenedor.
 command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
 
 # Mantiene el contenedor activo para que el comando 'npm run dev' se ejecute correctamente.
