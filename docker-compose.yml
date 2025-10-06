@@ -9,6 +9,12 @@ volumes:
   - .:/app
   - /app/node_modules
 
+# Aqui se guarda el API de GEMINI
+env_file:
+  - .env.secrets
+  # Contenido de .env.secrets:
+  # GEMINI_API_KEY=XXXXXXX
+
 # Mapeo de puertos: 
 # - 8080 (Máquina Host) -> 5173 (Contenedor)
 # Debes acceder a la app en http://localhost:8080
