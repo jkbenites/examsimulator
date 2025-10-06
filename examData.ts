@@ -31,7 +31,7 @@ export const examSuite: ExamSuiteConfig = {
   simulacra: [
     {
       id: "istqb_exam_a",
-      title: "Examen de Práctica A",
+      title: "Examen de Práctica A (Oficial)",
       questions: [
         {
           chapter: "1. Fundamentos de las Pruebas",
