@@ -1,0 +1,26 @@
+# Directorio de trabajo dentro del contenedor
+working_dir: /app
+
+# Monta el directorio actual (donde está el docker-compose.yml) 
+# en /app dentro del contenedor.
+# El segundo volumen excluye el directorio node_modules local 
+# para usar el del contenedor y evitar conflictos.
+volumes:
+  - .:/app
+  - /app/node_modules
+
+# Mapeo de puertos: 
+# - 8080 (Máquina Host) -> 5173 (Contenedor)
+# Debes acceder a la app en http://localhost:8080
+ports:
+  - "8080:5173"
+
+# Comando para ejecutar la aplicación:
+# 1. Ejecuta 'npm install' para instalar dependencias.
+# 2. Ejecuta 'npm run dev' con las flags necesarias:
+#    - '--host 0.0.0.0' para ser accesible desde fuera del contenedor.
+#    - '--port 5173' para especificar el puerto interno.
+command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+# Mantiene el contenedor activo para que el comando 'npm run dev' se ejecute correctamente.
+tty: true
