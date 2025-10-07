@@ -57,23 +57,51 @@ const App = () => {
     const [completedExams, setCompletedExams] = useState<Set<string>>(new Set());
     const [currentAnalysisIndex, setCurrentAnalysisIndex] = useState(0);
 
-    // Load history and completed exams from localStorage on initial render
+    // Load history, completed exams, and any ongoing exam from localStorage on initial render
     useEffect(() => {
         try {
             const storedHistory = localStorage.getItem('examHistory_v2');
-            if (storedHistory) {
-                setExamHistory(JSON.parse(storedHistory));
-            }
+            if (storedHistory) setExamHistory(JSON.parse(storedHistory));
+            
             const storedCompleted = localStorage.getItem('completedExams_v2');
-            if (storedCompleted) {
-                setCompletedExams(new Set(JSON.parse(storedCompleted)));
+            if (storedCompleted) setCompletedExams(new Set(JSON.parse(storedCompleted)));
+
+            const storedExamState = localStorage.getItem('currentExamState');
+            if (storedExamState) {
+                const resumedState = JSON.parse(storedExamState);
+                const simulacrum = examSuite.simulacra.find(s => s.id === resumedState.simulacrumId);
+                if (simulacrum) {
+                    setSelectedSimulacrum(simulacrum);
+                    setCurrentQuestionIndex(resumedState.currentQuestionIndex);
+                    setUserAnswers(resumedState.userAnswers);
+                    setSavedQuestions(new Set(resumedState.savedQuestions));
+                    setTimeLeft(resumedState.timeLeft);
+                    setGameState('exam');
+                } else {
+                    localStorage.removeItem('currentExamState');
+                }
             }
         } catch (error) {
             console.error("Failed to parse stored data:", error);
             localStorage.removeItem('examHistory_v2');
             localStorage.removeItem('completedExams_v2');
+            localStorage.removeItem('currentExamState');
         }
     }, []);
+
+    // Save exam state to localStorage during an exam
+    useEffect(() => {
+        if (gameState === 'exam' && selectedSimulacrum) {
+            const examState = {
+                simulacrumId: selectedSimulacrum.id,
+                currentQuestionIndex,
+                userAnswers,
+                savedQuestions: Array.from(savedQuestions),
+                timeLeft,
+            };
+            localStorage.setItem('currentExamState', JSON.stringify(examState));
+        }
+    }, [gameState, selectedSimulacrum, currentQuestionIndex, userAnswers, savedQuestions, timeLeft]);
     
     // Exam Timer Logic
     useEffect(() => {
@@ -98,6 +126,7 @@ const App = () => {
     const goToHome = useCallback(() => {
         setSelectedSimulacrum(null);
         setGameState('start');
+        localStorage.removeItem('currentExamState');
     }, []);
 
     const handleStartExam = (simulacrum: Simulacrum) => {
@@ -152,7 +181,6 @@ const App = () => {
     }, [userAnswers, selectedSimulacrum]);
 
     const submitExam = useCallback(() => {
-        console.log("submitExam function called.");
         if (!selectedSimulacrum) {
             console.error("submitExam called without a selected simulacrum.");
             return;
@@ -196,48 +224,35 @@ const App = () => {
                 timeTakenSeconds
             };
     
-            // Update History
             const updatedHistory = [newResult, ...examHistory];
             setExamHistory(updatedHistory);
             localStorage.setItem('examHistory_v2', JSON.stringify(updatedHistory));
     
-            // Update Completed Exams
             const newCompleted = new Set(completedExams);
             newCompleted.add(selectedSimulacrum.id);
             setCompletedExams(newCompleted);
             localStorage.setItem('completedExams_v2', JSON.stringify(Array.from(newCompleted)));
-    
-            console.log("Exam submitted successfully. New result:", newResult);
+            
+            localStorage.removeItem('currentExamState');
             setGameState('submitting');
         } catch (error) {
             console.error("An error occurred during exam submission:", error);
-            // Optionally, set an error state to show a message to the user
         }
     }, [selectedSimulacrum, score, userAnswers, timeLeft, examHistory, completedExams]);
 
     const handleSubmitAttempt = useCallback(() => {
-        console.log("handleSubmitAttempt called.");
-        if (!selectedSimulacrum) {
-            console.warn("handleSubmitAttempt called but no simulacrum selected.");
-            return;
-        }
+        if (!selectedSimulacrum) return;
     
         const answeredCount = Object.keys(userAnswers).length;
         const totalQuestions = selectedSimulacrum.questions.length;
         const unansweredCount = totalQuestions - answeredCount;
-        
-        console.log(`Unanswered questions: ${unansweredCount}`);
     
         if (unansweredCount > 0) {
             const confirmationMessage = `Tienes ${unansweredCount} pregunta(s) sin responder. ¿Estás seguro de que deseas finalizar y enviar el examen?`;
             if (window.confirm(confirmationMessage)) {
-                console.log("User confirmed submission with unanswered questions.");
                 submitExam();
-            } else {
-                console.log("User cancelled submission.");
             }
         } else {
-            console.log("All questions answered. Submitting directly.");
             submitExam();
         }
     }, [selectedSimulacrum, userAnswers, submitExam]);
@@ -249,25 +264,24 @@ const App = () => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (!selectedSimulacrum) return;
 
-            // Avoid firing shortcuts if user is typing in an input field (future-proofing)
             if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
                 return;
             }
 
-            // Navigate questions: Alt + Left/Right Arrow
             if (event.altKey && event.key === 'ArrowRight') {
                 event.preventDefault();
-                goToQuestion(currentQuestionIndex + 1);
+                const isLastQuestion = currentQuestionIndex === selectedSimulacrum.questions.length - 1;
+                if (!isLastQuestion) {
+                    goToQuestion(currentQuestionIndex + 1);
+                }
             } else if (event.altKey && event.key === 'ArrowLeft') {
                 event.preventDefault();
                 goToQuestion(currentQuestionIndex - 1);
             }
-            // Mark question: Alt + M
             else if (event.altKey && (event.key === 'm' || event.key === 'M')) {
                 event.preventDefault();
                 handleSaveQuestion(currentQuestionIndex);
             }
-            // Select answer: 1, 2, 3, 4, 5
             else if (['1', '2', '3', '4', '5'].includes(event.key)) {
                 event.preventDefault();
                 const optionIndex = parseInt(event.key, 10) - 1;
@@ -275,12 +289,10 @@ const App = () => {
                     handleAnswerSelect(optionIndex);
                 }
             }
-            // Submit: Ctrl + Enter
             else if (event.ctrlKey && event.key === 'Enter') {
                 event.preventDefault();
                 handleSubmitAttempt();
             }
-            // Cancel: Escape key
             else if (event.key === 'Escape') {
                 event.preventDefault();
                 handleCancelExam();
@@ -774,7 +786,13 @@ const App = () => {
                         <button className="btn btn-secondary" onClick={() => goToQuestion(currentQuestionIndex - 1)} disabled={currentQuestionIndex === 0}>
                             Anterior
                         </button>
-                        <button className="btn btn-secondary" onClick={() => goToQuestion(currentQuestionIndex + 1)} disabled={currentQuestionIndex === selectedSimulacrum.questions.length - 1}>
+                        <button className="btn btn-secondary" onClick={() => {
+                            if (currentQuestionIndex === selectedSimulacrum.questions.length - 1) {
+                                handleSubmitAttempt();
+                            } else {
+                                goToQuestion(currentQuestionIndex + 1);
+                            }
+                        }}>
                             Siguiente
                         </button>
                     </div>
@@ -862,7 +880,10 @@ const App = () => {
                          <div className="analysis-result">
                              <h3>¡Análisis Completo!</h3>
                              <p>{analysisResult.generalStatus}</p>
-                             <button className="btn" onClick={() => setGameState('analysisDetail')}>
+                             <button className="btn" onClick={() => {
+                                 setCurrentAnalysisIndex(0); // Reset to first question on entry
+                                 setGameState('analysisDetail');
+                             }}>
                                  Revisar Preguntas con Feedback de IA
                              </button>
                          </div>
@@ -885,60 +906,93 @@ const App = () => {
         const userAnswerIndex = latestResult.userAnswers[currentAnalysisIndex];
         
         return (
-            <div className="analysis-detail-screen">
-                <header className="analysis-header">
-                    <h1>Revisión Detallada con IA</h1>
-                    <button className="btn btn-secondary" onClick={() => setGameState('results')}>Volver a Resultados</button>
-                </header>
-
-                <div className="result-question">
-                    <p className="question-text">{currentAnalysisIndex + 1}. {question.questionText}</p>
-                    <ul>
-                        {question.options.map((option, index) => {
-                            const isUserAnswer = index === userAnswerIndex;
-                            const isCorrect = index === question.correctAnswerIndex;
-                            let className = 'result-option';
-                            if (isUserAnswer && !isCorrect) className += ' user-answer incorrect';
-                            if (isCorrect) className += ' correct-answer';
-                            if (isUserAnswer && isCorrect) className += ' user-answer correct';
-                            
-                            return <li key={index} className={className}>{option}</li>;
-                        })}
-                    </ul>
-
-                     {question.rationales && (
-                        <div className="official-rationale">
-                            <h3>Justificación Oficial</h3>
-                            {question.rationales.map((rationale, index) => {
-                                const isCorrectRationale = index === question.correctAnswerIndex;
-                                return (
-                                    <div key={index} className="rationale-item">
-                                        <p className={`rationale-option ${isCorrectRationale ? 'correct' : 'incorrect'}`}>
-                                            Opción {index + 1}
-                                        </p>
-                                        <p className="rationale-text">{rationale}</p>
-                                    </div>
-                                );
+            <div className="exam-layout">
+                <main className="exam-main">
+                     <header className="exam-header">
+                        <div>
+                            <h1>Revisión Detallada con IA</h1>
+                             <p>Analizando la pregunta {currentAnalysisIndex + 1} de {selectedSimulacrum.questions.length}</p>
+                        </div>
+                    </header>
+                    <div className="result-question">
+                        <p className="question-text">{currentAnalysisIndex + 1}. {question.questionText}</p>
+                        <ul>
+                            {question.options.map((option, index) => {
+                                const isUserAnswer = index === userAnswerIndex;
+                                const isCorrect = index === question.correctAnswerIndex;
+                                let className = 'result-option';
+                                if (isUserAnswer && !isCorrect) className += ' user-answer incorrect';
+                                if (isCorrect) className += ' correct-answer';
+                                if (isUserAnswer && isCorrect) className += ' user-answer correct';
+                                
+                                return <li key={index} className={className}>{option}</li>;
                             })}
-                        </div>
-                    )}
+                        </ul>
 
-                    {currentFeedback && (
-                        <div className="ai-feedback">
-                            <h3><span role="img" aria-label="robot">🤖</span> Feedback de la IA</h3>
-                            <p>{currentFeedback.feedback}</p>
-                        </div>
-                    )}
-                </div>
+                        {question.rationales && (
+                            <div className="official-rationale">
+                                <h3>Justificación Oficial</h3>
+                                {question.rationales.map((rationale, index) => {
+                                    const isCorrectRationale = index === question.correctAnswerIndex;
+                                    return (
+                                        <div key={index} className="rationale-item">
+                                            <p className={`rationale-option ${isCorrectRationale ? 'correct' : 'incorrect'}`}>
+                                                Opción {index + 1}
+                                            </p>
+                                            <p className="rationale-text">{rationale}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
 
-                <div className="navigation-buttons">
-                    <button className="btn btn-secondary" onClick={() => goToAnalysisQuestion(currentAnalysisIndex - 1)} disabled={currentAnalysisIndex === 0}>
-                        Anterior
-                    </button>
-                    <button className="btn btn-secondary" onClick={() => goToAnalysisQuestion(currentAnalysisIndex + 1)} disabled={currentAnalysisIndex === analysisResult.feedbackPerQuestion.length - 1}>
-                        Siguiente
-                    </button>
-                </div>
+                        {currentFeedback && (
+                            <div className="ai-feedback">
+                                <h3><span role="img" aria-label="robot">🤖</span> Feedback de la IA</h3>
+                                <p>{currentFeedback.feedback}</p>
+                            </div>
+                        )}
+                    </div>
+                     <div className="navigation-buttons">
+                        <button className="btn btn-secondary" onClick={() => goToAnalysisQuestion(currentAnalysisIndex - 1)} disabled={currentAnalysisIndex === 0}>
+                            Anterior
+                        </button>
+                        <button className="btn btn-secondary" onClick={() => goToAnalysisQuestion(currentAnalysisIndex + 1)} disabled={currentAnalysisIndex === analysisResult.feedbackPerQuestion.length - 1}>
+                            Siguiente
+                        </button>
+                    </div>
+                </main>
+                <aside className="exam-sidebar">
+                    <h3 className="sidebar-title">Navegador de Preguntas</h3>
+                     <div className="question-navigator">
+                        {selectedSimulacrum.questions.map((q, index) => {
+                            const userAnswer = latestResult.userAnswers[index];
+                            const isCorrect = userAnswer === q.correctAnswerIndex;
+                            const isAnswered = userAnswer !== undefined;
+                            let statusClass = '';
+                            if (isAnswered) {
+                                statusClass = isCorrect ? 'correct' : 'incorrect';
+                            }
+
+                            return (
+                                <button
+                                    key={index}
+                                    className={`nav-btn 
+                                        ${index === currentAnalysisIndex ? 'current' : ''} 
+                                        ${statusClass}`
+                                    }
+                                    onClick={() => goToAnalysisQuestion(index)}
+                                    aria-label={`Ir a la pregunta ${index + 1}`}
+                                >
+                                    {index + 1}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <div className="sidebar-actions">
+                        <button className="btn btn-secondary" onClick={() => setGameState('results')}>Volver a Resultados</button>
+                    </div>
+                </aside>
             </div>
         );
     };
